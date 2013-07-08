@@ -37,7 +37,13 @@ cdef extern from "system.h":
         long lins
         long rads
 
+    cdef cppclass WeightedNode:
+        string nm
+        long num
+        double weight
+
     ctypedef vector[ModConnects] ModsVector
+    ctypedef vector[WeightedNode] WeightedNodesVector
 
     cdef cppclass System:
         double start
@@ -56,6 +62,7 @@ cdef extern from "system.h":
         void setnodes(string& tp, NodesVec& nodes)
         void modconns(ModsVector& vect)
         void consvals(string& tp, string& fmod, string& tmod, size_t size, LAllocator la, DAllocator da, void* f)
+        void appox(string& mod, long num, WeightedNodesVector& vec)
 
 @cython.boundscheck(False) # turn of bounds-checking for entire function
 cdef double* valscallback(size_t size, void *f):
@@ -71,10 +78,14 @@ cdef long* numscallback(size_t size, void *f):
     vals.append(arr)
     return <long*>arr.data
 
-class Node(object):
-    def __init__(self, mod, num, onvals):
+class NodeBase(object):
+    def __init__(self, mod, num):
         self.mod = mod
         self.num = num
+
+class ArrayNode(NodeBase):
+    def __init__(self, mod, num, onvals):
+        super(ArrayNode, self).__init__(mod, num)
         self._onvalues = onvals
     def values(self):
         "Returns values for this node"
@@ -104,6 +115,11 @@ class ModsConn(object):
         return self._lins.values(self.fmod, self.tmod, self._parent)
     def rads(self):
         return self._rads.values(self.fmod, self.tmod, self._parent)
+
+class ApproxNode(NodeBase):
+    def __init__(self, nm, num, refs):
+        super(ApproxNode, self).__init__(nm, num)
+        self.refs = tuple(refs)
 
 cdef pullvalues(string& tp, System* sptr, string& mod, long num):
     vals = []
@@ -150,7 +166,19 @@ cdef class PySystem:
         """Retrieves set of nodes for requested type.
            
         Args:
-            tp: request type. Available types: heat, energy, temperature, arithmetic, boundary, diffuse, sun
+            tp: request type. Available types: 
+              based on capacity:
+                 heat         - infinite capacity
+                 arithmetic   - zero capacity
+                 boundary     - infinite capacity
+                 diffuse      - non-zero capacity
+              based on references:
+                 energy       - energy supplied from outside
+                 temperature  - temperature is predefined
+                 sun          - same as 'energy' but the sun is source of it
+                 one          - one way conductor, lists receiving nodes
+                 approximated - approximated from other nodes
+                 undefined    - node is mentioned in connections, but type is not defined  
         Returns:
             list of tuples. 
         Raises:
@@ -210,9 +238,26 @@ cdef class PySystem:
             return pullvalues(tp, self.thisptr, mod, num)
         nodes = []
         for mod, num in vect:
-            nodes.append(Node(mod, num, onvals))
+            nodes.append(ArrayNode(mod, num, onvals))
         return nodes
     def start(self):
         return self.thisptr.start
     def stop(self):
         return self.thisptr.stop
+    
+    def approximated(self):
+        nset = self.nodeset('approximated')
+        nodes = []
+        for mname, num in nset:
+            refs = self._pullapprox(mname, num)
+            nodes.append(ApproxNode(mname, num, refs))
+        return nodes
+
+    def _pullapprox(self, mname, num):
+        cdef WeightedNodesVector vect
+        self.thisptr.appox(mname, num, vect)
+        refs = []
+        for v in vect:
+            refs.append((v.nm, v.num, v.weight))
+        return refs
+

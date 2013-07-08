@@ -7,9 +7,16 @@ Created on Jul 5, 2013
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt, numpy
 
+import extern
+#import cruncher
+
 def main():
     Axes3D.__doc__
-    linearize()
+    #linearize()
+    #sin = cruncher.setup()
+    #compare(loc, sin, 'AEPAN', 20006)
+    loc = '/media/biggie/workspace/celeryprojects/buildsite/testing/Fu24L_Ox15L_760Tank_Sweep/output'
+    shownode(loc, 'SEPTAE', 1)
 
 def linearize():
     delta = 2
@@ -31,5 +38,29 @@ def linearize():
     #ax.plot3D(T1.flatten(), T2.flatten(), Z1.flatten(), '.', color='red', linestyle='', markersize=1, marker='.')
     plt.show()
 
+def compare(loc, sin, mod, num):
+    otms, ovals = extern.pullnode(loc, mod, num)
+    nodes = sin.ext_nodes('sun')
+    for nd in nodes:
+        if nd.mod == mod and nd.num == num:
+            break
+    else:
+        raise Exception("can not find '%s.%d'"%(mod, num))
+    mult, tms, vals = nd.values(); mult
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(otms/3600.0, ovals, 'b.-', label='temps')
+    ax.plot(tms/3600.0, vals, 'r.-', label='power')
+    ax.legend()
+    plt.show()
+
+def shownode(loc, mod, num):
+    otms, ovals = extern.pullnode(loc, mod, num)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(otms/3600.0, ovals, 'b.-', label='temps')
+    ax.legend()
+    plt.show()
+    
 if __name__ == '__main__':
     main()
